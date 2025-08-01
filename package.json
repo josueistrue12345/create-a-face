@@ -1,0 +1,33 @@
+{
+  "name": "google-ai-studio-desktop",
+  "version": "1.0.0",
+  "description": "Google AI Studio - Desktop Application",
+  "author": "Google LLC",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "code": "electron code.js",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "serve": "http-server -p 8080"
+  },
+  "build": {
+    "appId": "com.google.aistudio",
+    "productName": "Google AI Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "package.json"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^24.0.0",
+    "http-server": "^14.1.1"
+  },
+  "dependencies": {
+    "three": "^0.158.0"
+  }
+}

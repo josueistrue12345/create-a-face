@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Face Morph - Offline</title>
+    <style>
+        body { margin: 0; background: #333; font-family: Arial; }
+        canvas { display: block; }
+        #status { position: absolute; top: 10px; left: 10px; color: white; z-index: 100; }
+    </style>
+</head>
+<body>
+    <div id="status">Cargando...</div>
+    
+    <script src="three.min.js"></script>
+    <script>
+        let scene, camera, renderer, mesh;
+
+        function init() {
+            document.getElementById('status').textContent = 'Inicializando...';
+            
+            // Escena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333);
+
+            // Cámara
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 3;
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Crear cara
+            createFace();
+
+            // Luz
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(0, 0, 1);
+            scene.add(light);
+
+            document.getElementById('status').textContent = 'Listo! Cara con morph targets';
+            setTimeout(() => {
+                document.getElementById('status').style.display = 'none';
+            }, 2000);
+
+            animate();
+        }
+
+        function createFace() {
+            // Geometría básica
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            
+            // Crear morph target para sonrisa
+            const smileGeometry = geometry.clone();
+            const positions = smileGeometry.attributes.position.array;
+            
+            // Modificar vértices para crear sonrisa
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                
+                if (y < -0.3 && Math.abs(x) > 0.2 && Math.abs(x) < 0.7) {
+                    positions[i + 1] = y + 0.2;
+                }
+            }
+            
+            // Asignar morph target
+            geometry.morphAttributes.position = [smileGeometry.attributes.position];
+            
+            // Material
+            const material = new THREE.MeshLambertMaterial({ color: 0xffcc99 });
+            
+            // Mesh
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+            
+            // Animar sonrisa
+            let smileAmount = 0;
+            let direction = 1;
+            
+            setInterval(() => {
+                smileAmount += direction * 0.02;
+                if (smileAmount >= 1) direction = -1;
+                if (smileAmount <= 0) direction = 1;
+                
+                mesh.morphTargetInfluences[0] = smileAmount;
+            }, 50);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            mesh.rotation.y += 0.005;
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        // Verificar si THREE.js se cargó
+        if (typeof THREE !== 'undefined') {
+            init();
+            window.addEventListener('resize', onWindowResize);
+        } else {
+            document.getElementById('status').innerHTML = 'Error: No se encontró three.min.js<br>Asegúrate de que el archivo esté en la misma carpeta';
+        }
+    </script>
+</body>
+</html>

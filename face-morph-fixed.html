@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>three.js webgl - morph targets - face</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body { margin: 0; background-color: #666666; font-family: Arial, sans-serif; overflow: hidden; }
+
+        #controls { position: absolute; bottom: 20px; left: 20px; z-index: 100; }
+        .btn { padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #45a049; }
+        .btn.laugh { background: #ff9800; }
+        .btn.talk { background: #2196F3; }
+        .btn.reset { background: #f44336; }
+    </style>
+</head>
+<body>
+
+    
+    <div id="controls">
+        <button class="btn laugh" onclick="happy()">😊 Feliz</button>
+        <button class="btn" onclick="angry()" style="background: #f44336;">😠 Enojado</button>
+        <button class="btn" onclick="sad()" style="background: #2196F3;">😢 Triste</button>
+        <button class="btn talk" onclick="talk()">💬 Habla</button>
+        <button class="btn reset" onclick="reset()">🔄 Reset</button>
+        <button class="btn" onclick="changeSkinColor()">🎨 Piel</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+        import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+        import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+        let camera, scene, renderer, mixer, clock, controls, headMesh, influences;
+
+        init();
+
+        function init() {
+            clock = new THREE.Clock();
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 20);
+            camera.position.set(-1.8, 0.8, 3);
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xcccccc);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setAnimationLoop(animate);
+            renderer.toneMappingExposure = 1.2;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+            document.body.appendChild(renderer.domElement);
+
+            // Configurar loaders
+            const ktx2Loader = new KTX2Loader()
+                .setTranscoderPath('https://unpkg.com/three@0.158.0/examples/jsm/libs/basis/')
+                .detectSupport(renderer);
+
+            // Cargar modelo
+            new GLTFLoader()
+                .setKTX2Loader(ktx2Loader)
+                .setMeshoptDecoder(MeshoptDecoder)
+                .load('models/facecap.glb', (gltf) => {
+                const mesh = gltf.scene.children[0];
+                scene.add(mesh);
+
+                // Desactivar animaciones por defecto
+                // mixer = new THREE.AnimationMixer(mesh);
+                // if (gltf.animations.length > 0) {
+                //     mixer.clipAction(gltf.animations[0]).play();
+                // }
+
+                // GUI para morph targets
+                headMesh = mesh.getObjectByName('mesh_2');
+                if (headMesh && headMesh.morphTargetInfluences) {
+                    influences = headMesh.morphTargetInfluences;
+                    
+
+                    
+
+                    
+                    const gui = new GUI();
+                    gui.close();
+
+                    if (headMesh.morphTargetDictionary) {
+                        for (const [key, value] of Object.entries(headMesh.morphTargetDictionary)) {
+                            gui.add(influences, value, 0, 1, 0.01)
+                                .name(key.replace('blendShape1.', ''))
+                                .listen();
+                        }
+                    }
+                }
+            });
+
+            // Iluminación
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight2.position.set(-1, 0.5, 0.5);
+            scene.add(directionalLight2);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.minDistance = 2.5;
+            controls.maxDistance = 5;
+            controls.minAzimuthAngle = -Math.PI / 2;
+            controls.maxAzimuthAngle = Math.PI / 2;
+            controls.maxPolarAngle = Math.PI / 1.8;
+            controls.target.set(0, 0.15, -0.2);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        let facePosition = {x: 0, y: 0};
+        let video, canvas, ctx;
+        
+        // Inicializar detección facial real
+        function initFaceTracking() {
+            // Crear elementos para detección
+            video = document.createElement('video');
+            canvas = document.createElement('canvas');
+            ctx = canvas.getContext('2d');
+            
+            video.style.display = 'none';
+            canvas.style.display = 'none';
+            document.body.appendChild(video);
+            document.body.appendChild(canvas);
+            
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.play();
+                    
+                    video.addEventListener('loadedmetadata', () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        
+                        // Detectar cara cada 100ms
+                        setInterval(detectFace, 100);
+                    });
+                })
+                .catch(err => {
+                    console.log('Cámara no disponible, usando mouse:', err);
+                    // Fallback al mouse
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    document.addEventListener('mousemove', (e) => {
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const centerX = rect.width / 2;
+                        const centerY = rect.height / 2;
+                        
+                        facePosition.x = (x - centerX) / centerX;
+                        facePosition.y = (y - centerY) / centerY;
+                    });
+                });
+        }
+        
+        function detectFace() {
+            if (!video || video.videoWidth === 0) return;
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Detección simple de cara usando diferencias de color
+            let faceX = 0, faceY = 0, faceCount = 0;
+            
+            for (let y = 0; y < canvas.height; y += 10) {
+                for (let x = 0; x < canvas.width; x += 10) {
+                    const i = (y * canvas.width + x) * 4;
+                    const r = imageData.data[i];
+                    const g = imageData.data[i + 1];
+                    const b = imageData.data[i + 2];
+                    
+                    // Detectar tonos de piel aproximados
+                    if (r > 95 && g > 40 && b > 20 && 
+                        r > g && r > b && 
+                        Math.abs(r - g) > 15) {
+                        faceX += x;
+                        faceY += y;
+                        faceCount++;
+                    }
+                }
+            }
+            
+            if (faceCount > 0) {
+                const avgX = faceX / faceCount;
+                const avgY = faceY / faceCount;
+                
+                // Normalizar posición (-1 a 1)
+                facePosition.x = (avgX - canvas.width / 2) / (canvas.width / 2);
+                facePosition.y = (avgY - canvas.height / 2) / (canvas.height / 2);
+            }
+        }
+        
+        function animate() {
+            // Mover la cabeza para que siempre muestre el rostro de frente hacia la cámara
+            if (headMesh && influences) {
+                const eyeLookX = Math.max(-1, Math.min(1, facePosition.x));
+                const eyeLookY = Math.max(-1, Math.min(1, -facePosition.y));
+                
+                // Encontrar el mesh padre que contiene toda la cara
+                let fullHead = headMesh;
+                while (fullHead.parent && fullHead.parent.type !== 'Scene') {
+                    fullHead = fullHead.parent;
+                }
+                
+                // Rotar la cabeza para que el rostro siempre mire hacia donde está la persona
+                // Esto hace que el rostro aparezca siempre de frente en la escena
+                fullHead.rotation.y = -eyeLookX * 0.3; // Rotación horizontal invertida
+                fullHead.rotation.x = -eyeLookY * 0.2; // Rotación vertical invertida
+                
+                // Resetear morph targets de ojos para que no interfieran
+                const eyeMorphs = ['eyeLookInLeft', 'eyeLookOutRight', 'eyeLookOutLeft', 'eyeLookInRight', 'eyeLookUp', 'eyeLookDown'];
+                eyeMorphs.forEach(morphName => {
+                    const index = findMorphIndex(morphName);
+                    if (index >= 0) influences[index] = 0;
+                });
+            }
+            
+            renderer.render(scene, camera);
+            controls.update();
+        }
+        
+        // Inicializar seguimiento facial
+        initFaceTracking();
+
+        // Funciones de control
+        window.happy = function() {
+            if (!influences) return;
+            const happyTargets = [
+                {index: findMorphIndex('mouthSmile'), value: 1},
+                {index: findMorphIndex('eyeSquint'), value: 0.6},
+                {index: findMorphIndex('cheekPuff'), value: 0.4}
+            ];
+            animateExpression(happyTargets, 500);
+        }
+
+        window.angry = function() {
+            if (!influences) return;
+            const angryTargets = [
+                {index: findMorphIndex('browDown'), value: 1},
+                {index: findMorphIndex('mouthFrown'), value: 0.8},
+                {index: findMorphIndex('eyeSquint'), value: 0.7},
+                {index: findMorphIndex('noseSneer'), value: 0.5}
+            ];
+            animateExpression(angryTargets, 500);
+        }
+
+        window.sad = function() {
+            if (!influences) return;
+            const sadTargets = [
+                {index: findMorphIndex('mouthFrown'), value: 1},
+                {index: findMorphIndex('browDown'), value: 0.6},
+                {index: findMorphIndex('eyeSquint'), value: 0.3},
+                {index: findMorphIndex('mouthSad'), value: 0.8}
+            ];
+            animateExpression(sadTargets, 500);
+        }
+
+        window.talk = function() {
+            if (!influences) return;
+            const talkSequence = [
+                [{index: findMorphIndex('jawOpen'), value: 0.6}],
+                [{index: findMorphIndex('jawOpen'), value: 0.2}, {index: findMorphIndex('mouthFunnel'), value: 0.4}],
+                [{index: findMorphIndex('jawOpen'), value: 0.8}],
+                [{index: findMorphIndex('jawOpen'), value: 0}]
+            ];
+            playSequence(talkSequence, 200);
+        }
+
+        window.reset = function() {
+            if (!influences) return;
+            for (let i = 0; i < influences.length; i++) {
+                influences[i] = 0;
+            }
+        }
+
+        let skinColorIndex = 0;
+        const skinColors = [0xffdbac, 0x8d5524, 0xc68642, 0xf1c27d, 0xe0ac69, 0x3c2414];
+        
+        window.changeSkinColor = function() {
+            if (!headMesh) return;
+            
+            headMesh.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    if (!child.name || !child.name.toLowerCase().includes('eye')) {
+                        child.material.color.setHex(skinColors[skinColorIndex]);
+                        child.material.needsUpdate = true;
+                    }
+                }
+            });
+            
+            skinColorIndex = (skinColorIndex + 1) % skinColors.length;
+        }
+
+
+
+        function findMorphIndex(name) {
+            if (!headMesh || !headMesh.morphTargetDictionary) return -1;
+            for (const [key, value] of Object.entries(headMesh.morphTargetDictionary)) {
+                if (key.toLowerCase().includes(name.toLowerCase())) {
+                    return value;
+                }
+            }
+            return -1;
+        }
+
+        function animateExpression(targets, duration, autoReset = false) {
+            targets.forEach(target => {
+                if (target.index >= 0) {
+                    animateValue(target.index, influences[target.index], target.value, duration);
+                }
+            });
+            if (autoReset) {
+                setTimeout(() => {
+                    targets.forEach(target => {
+                        if (target.index >= 0) {
+                            animateValue(target.index, influences[target.index], 0, duration);
+                        }
+                    });
+                }, duration + 100);
+            }
+        }
+
+        function animateValue(index, from, to, duration) {
+            const start = Date.now();
+            function update() {
+                const elapsed = Date.now() - start;
+                const progress = Math.min(elapsed / duration, 1);
+                influences[index] = from + (to - from) * progress;
+                if (progress < 1) requestAnimationFrame(update);
+            }
+            update();
+        }
+
+        function playSequence(sequence, interval) {
+            sequence.forEach((targets, i) => {
+                setTimeout(() => animateExpression(targets, interval / 2), i * interval);
+            });
+        }
+    </script>
+</body>
+</html>
